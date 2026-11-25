@@ -1,0 +1,63 @@
+import network
+import time
+import dht
+import machine
+
+from umqtt.simple import MQTTClient
+from wlan_cred import SSID, PASSWORD, OPISKELIJATUNNUS #verkon yhteystiedot wlan_cred.py ohjelmasta
+
+BROKER = "iot.research.hamk.fi"
+
+TOPIC_LAMPOTILA = ("HAMK/Fo/DHT22/" + OPISKELIJATUNNUS + "/lampotila").encode()
+TOPIC_KOSTEUS = ("HAMK/Fo/DHT22/" + OPISKELIJATUNNUS + "/kosteus").encode()
+
+sensor = dht.DHT22(machine.Pin(21)) #Picon pinni tieto
+
+
+wlan = network.WLAN(network.STA_IF)  # Yhdistetään verkkoon
+wlan.active(True)
+wlan.connect(SSID, PASSWORD)
+
+while not wlan.isconnected():
+    time.sleep(1)
+
+# Luodaan MQTT-asiakas
+client = MQTTClient(
+    ("dht22-" + OPISKELIJATUNNUS).encode(),
+    BROKER,
+    keepalive=60
+)
+
+edellinenLampotila = None
+edellinenKosteus = None
+
+while True: #sensori looppi alkaa
+    sensor.measure()
+    lampotila = round(sensor.temperature(), 1)
+    kosteus = round(sensor.humidity(), 1)
+
+    print("Lämpötila:", lampotila, "°C")
+    print("Kosteus:", kosteus, "%")
+
+    if lampotila != edellinenLampotila:
+        client.connect()
+        client.publish(TOPIC_LAMPOTILA, str(lampotila).encode())
+        client.disconnect()
+
+        print("MQTT: Lämpötila lähetetty")
+    else:
+        print("MQTT: Lämpötilaa ei lähetetty")
+
+    if kosteus != edellinenKosteus:
+        client.connect()
+        client.publish(TOPIC_KOSTEUS, str(kosteus).encode())
+        client.disconnect()
+
+        print("MQTT: Kosteus lähetetty")
+    else:
+        print("MQTT: Kosteutta ei lähetetty")
+
+    edellinenLampotila = lampotila
+    edellinenKosteus = kosteus
+
+    time.sleep(10)
